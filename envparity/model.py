@@ -64,6 +64,7 @@ class Project:
     findings: list[Finding] = field(default_factory=list)
     files: dict[str, list[str]] = field(default_factory=dict)
     skipped: list[str] = field(default_factory=list)
+    mentions: set[str] = field(default_factory=set)
 
     def add_file(self, layer: str, path: str) -> None:
         self.files.setdefault(layer, []).append(path)
@@ -77,5 +78,10 @@ PLACEHOLDER_RE = re.compile(
 )
 
 
-def is_placeholder(value: str | None) -> bool:
-    return value is None or value.strip() == "" or bool(PLACEHOLDER_RE.match(value.strip()))
+def is_placeholder(value: str | None, name: str | None = None) -> bool:
+    if value is None or value.strip() == "":
+        return True
+    value = value.strip()
+    if PLACEHOLDER_RE.match(value) or "placeholder" in value.lower():
+        return True
+    return bool(name) and value.upper().startswith(name.upper()) and bool(re.fullmatch(r"[A-Z0-9_]+", value))

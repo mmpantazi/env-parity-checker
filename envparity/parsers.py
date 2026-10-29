@@ -11,7 +11,7 @@ from .model import NAME_RE, Finding, KubeObject, Project, Ref
 POD_KINDS = {"Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob", "ReplicaSet", "ReplicationController"}
 DOTENV_LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*(?:=\s*(.*?))?\s*$")
 INTERP = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-?+])([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)")
-CI_CONTEXT = re.compile(r"\$\{\{\s*(env|vars|secrets)\.([A-Za-z_][A-Za-z0-9_]*)")
+CI_CONTEXT = re.compile(r"\$\{\{\s*(env|vars|secrets)\.([A-Za-z_][A-Za-z0-9_-]*)")
 KUBE_REF = re.compile(r"(?<!\$)\$\(([A-Za-z_][A-Za-z0-9_.-]*)\)")
 
 
@@ -150,7 +150,7 @@ def parse_workflow(project: Project, rel: str, text: str) -> None:
     for doc in docs:
         if isinstance(doc, dict):
             _walk_env(project, rel, doc, "workflow")
-    defined = {r.name for r in project.refs if r.file == rel and r.role == "define"}
+    defined = {r.name.lower() for r in project.refs if r.file == rel and r.role == "define"}
     sets_env_file = "GITHUB_ENV" in text
     for number, raw in enumerate(text.splitlines(), 1):
         if raw.lstrip().startswith("#"):
@@ -159,7 +159,7 @@ def parse_workflow(project: Project, rel: str, text: str) -> None:
             ctx, name = match.groups()
             if ctx == "env":
                 project.refs.append(Ref(name, "ci", "use", rel, number, "interp", scope="env context",
-                                        required=name not in defined and not (sets_env_file and re.search(rf"\b{name}=", text)),
+                                        required=name.lower() not in defined and not (sets_env_file and re.search(rf"\b{name}=", text)),
                                         extra={"op": None, "default": None}))
             else:
                 project.refs.append(Ref(name, "ci", "use", rel, number, "ctx", scope=ctx,

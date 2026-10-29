@@ -14,6 +14,9 @@ TEMPLATE_RE = re.compile(r"^((\.?env)(\.[\w-]+)*\.(example|sample|template|dist|
 COMPOSE_RE = re.compile(r"^(docker-)?compose([.-][\w.-]+)?\.ya?ml$", re.IGNORECASE)
 CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rb", ".rs", ".php", ".java", ".kt", ".cs", ".vue", ".svelte"}
 MAX_CODE_BYTES = 1_000_000
+MENTION_EXT = {".json", ".sh", ".bash", ".toml", ".ini", ".cfg", ".conf", ".tf", ".properties", ".service", ".mk"}
+MENTION_NAMES = {"dockerfile", "makefile", "procfile"}
+CAPS_WORD = re.compile(r"\b[A-Z][A-Z0-9_]{2,}\b")
 
 CODE_PATTERNS = [
     re.compile(r"process\.env\.([A-Za-z_][A-Za-z0-9_]*)"),
@@ -90,6 +93,10 @@ def scan_project(root: Path, exclude: list[str] | None = None, code: bool = True
                     parsers.parse_kube(project, rel, text, read_sibling)
         elif code and suffix in CODE_EXT:
             _scan_code(project, path, rel)
+        elif code and (suffix in MENTION_EXT or name.lower() in MENTION_NAMES or name.lower().startswith("dockerfile")):
+            text = _read(path)
+            if text is not None and len(text) <= MAX_CODE_BYTES:
+                project.mentions.update(CAPS_WORD.findall(text))
     return project
 
 

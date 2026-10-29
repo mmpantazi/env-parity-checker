@@ -1,0 +1,15 @@
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT}:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      STRIPE_KEY: ${STRIPE_KEY}
+      FEATURE_CHECKOUT_ENABLED: "1"
+      SENTRY_DSN: ${SENTRY_DSN:-}
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres

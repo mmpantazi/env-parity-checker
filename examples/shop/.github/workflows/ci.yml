@@ -1,0 +1,14 @@
+name: ci
+on: [push]
+env:
+  PORT: 3001
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+    steps:
+      - run: npm test
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          API_BASE: ${{ env.API_BASE_URL }}

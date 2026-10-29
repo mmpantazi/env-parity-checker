@@ -30,7 +30,17 @@ def run(project: Project, config: Config, code_scanned: bool) -> list[Finding]:
     context = _Context(project, config, by_name, opaque_k8s, code_scanned)
     for check in (_missing, _undeclared, _unused, _layer_gaps, _inconsistent, _types, _typos, _secrets):
         findings.extend(check(context))
-    return _apply_rules(findings, config)
+    return _apply_rules(_drop_overlaps(findings), config)
+
+
+SUPERSEDES = (("bad-type", "type-mismatch"), ("bad-type", "inconsistent"), ("type-mismatch", "inconsistent"),
+              ("bool-spelling", "inconsistent"), ("possible-typo", "undeclared"), ("possible-typo", "layer-gap"))
+
+
+def _drop_overlaps(findings: list[Finding]) -> list[Finding]:
+    present = {(f.rule, f.name) for f in findings}
+    dropped = {(weaker, name) for stronger, weaker in SUPERSEDES for rule, name in present if rule == stronger}
+    return [f for f in findings if (f.rule, f.name) not in dropped]
 
 
 class _Context:
@@ -101,7 +111,7 @@ def _missing(ctx: _Context):
                 continue
             if ref.layer == "compose" and (name in ctx.template_names or ctx.defines(name, "template")):
                 continue
-            if ref.layer == "ci" and ctx.defines(name, "ci"):
+            if ref.layer == "ci" and any(r.file == ref.file for r in ctx.defines(name, "ci")):
                 continue
             if ref.layer == "compose":
                 what = "passed through from the host" if ref.scope == "passthrough" else "interpolated"
@@ -148,7 +158,7 @@ def _unused(ctx: _Context):
     template_text = " ".join(r.value or "" for r in ctx.project.refs if r.layer == "template")
     for name in sorted(ctx.template_names):
         refs = ctx.by_name[name]
-        if any(r.layer != "template" for r in refs) or re.search(rf"\$\{{?{re.escape(name)}\b", template_text):
+        if name in ctx.project.mentions or any(r.layer != "template" for r in refs) or re.search(rf"\$\{{?{re.escape(name)}\b", template_text):
             continue
         yield Finding("unused", "warn", name, f"{name} is in .env.example but no code, compose file, workflow or manifest uses it",
                       _locs([r for r in refs if r.layer == "template"]), "Remove it, or the next person will keep configuring something dead.")
@@ -156,7 +166,7 @@ def _unused(ctx: _Context):
 
 def _layer_gaps(ctx: _Context):
     for name, refs in sorted(ctx.by_name.items()):
-        if ctx.external(name):
+        if ctx.external(name) or name not in ctx.template_names:
             continue
         present = {r.layer for r in refs if r.role == "define" and r.layer in DEPLOY}
         if ctx.compose_covers_template and name in ctx.template_names:
@@ -184,7 +194,7 @@ def _layer_gaps(ctx: _Context):
 def _literal(ref: Ref) -> str | None:
     if ref.role != "define" or ref.value is None or ref.kind not in ("literal", "configmap"):
         return None
-    return None if is_placeholder(ref.value) else ref.value.strip()
+    return None if is_placeholder(ref.value, ref.name) else ref.value.strip()
 
 
 def _normalise(value: str) -> tuple:
