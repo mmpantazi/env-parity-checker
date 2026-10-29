@@ -121,8 +121,10 @@ def _missing(ctx: _Context):
             else:
                 msg = f"${{{{ env.{name} }}}} is read but no env: block in this workflow sets it"
                 hint = f"Set {name} under env: at workflow, job or step level."
-            passthrough = ref.scope == "passthrough"
-            yield Finding("missing", "warn" if passthrough else "error", name, msg, [ref.where], hint)
+            soft = ref.scope == "passthrough" or ref.layer == "ci"
+            if ref.layer == "ci":
+                hint += " If an action sets it through $GITHUB_ENV this is a false alarm."
+            yield Finding("missing", "warn" if soft else "error", name, msg, [ref.where], hint)
             break
 
 

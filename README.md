@@ -12,7 +12,7 @@ ERROR k8s-unquoted   Deployment/web/web: env value 8080 is a YAML number, not a 
 ERROR missing        STRIPE_KEY is interpolated in docker-compose with no default but is not documented in .env.example; ...
 WARN  possible-typo  DATABSE_URL (only in Kubernetes) looks like a typo of DATABASE_URL (...)
 ...
-5 error(s), 18 warning(s), 4 note(s)
+4 error(s), 18 warning(s), 4 note(s)
 ```
 
 Existing tools compare one pair of files (`.env` vs `.env.example`) or explain how one variable resolves. envparity checks the whole chain at once and knows the traps of each layer.
@@ -49,7 +49,7 @@ envparity is not on PyPI yet; install it from a checkout. In GitHub Actions, `--
 
 | Rule | Level | Meaning |
 |---|---|---|
-| `missing` | error | compose `${X}` / pass-through `- X` with no default and not in `.env.example`; `${{ env.X }}` that no `env:` block sets |
+| `missing` | error | compose `${X}` with no default and not in `.env.example` (warn for pass-through `- X` and for a `${{ env.X }}` that no `env:` block in the workflow sets, since an action may set it) |
 | `k8s-unquoted` | error | `value: 8080`, `value: yes` or a ConfigMap number: the API server rejects non-strings |
 | `k8s-missing-key` | error | `configMapKeyRef`/`secretKeyRef` to a key that the ConfigMap/Secret in the repo does not define |
 | `k8s-forward-ref` | error | `$(B)` used before `B` is defined in `env`; Kubernetes leaves the text as is and starts the pod |

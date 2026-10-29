@@ -16,7 +16,7 @@ def test_example_fails_with_errors(capsys):
 def test_json_output_and_fail_on_never(capsys):
     assert main([str(EXAMPLE), "--format", "json", "--fail-on", "never"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["summary"]["error"] == 5
+    assert data["summary"]["error"] == 4
     assert {"rule", "severity", "name", "message", "locations", "hint"} <= set(data["findings"][0])
 
 

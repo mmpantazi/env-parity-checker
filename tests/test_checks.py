@@ -85,6 +85,7 @@ def test_ci_env_context_missing(project):
     wf = "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - run: echo ${{ env.NOPE }} ${{ env.OK }} ${{ secrets.S }}\n        env:\n          OK: 1\n"
     f = project({**TEMPLATE, ".github/workflows/t.yml": wf})
     assert ("missing", "NOPE") in rules(f)
+    assert [x.severity for x in f if x.rule == "missing"] == ["warn"]
     assert ("missing", "OK") not in rules(f)
     assert ("missing", "S") not in rules(f)
 
