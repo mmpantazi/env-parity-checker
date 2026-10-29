@@ -28,8 +28,16 @@ python -m envparity PATH # same, without installing the script
 ```
 
 Options: `--format text|json|github`, `--fail-on error|warn|info|never` (default `error`), `--min-severity`,
-`--no-code`, `--matrix` (which layer defines which variable), `--config FILE`.
-Exit code: 0 clean, 1 findings at or above `--fail-on`, 2 usage error.
+`--no-code`, `--matrix` (which layer defines which variable), `--config FILE`, `NO_COLOR` is respected.
+Exit code: 0 clean, 1 findings at or above `--fail-on`, 2 usage or config error.
+
+Adopting it on an existing repo:
+
+```bash
+envparity --suggest >> .env.example                  # NAME=value lines for variables used but undocumented
+envparity --write-baseline .envparity-baseline.json  # accept today's findings...
+envparity --baseline .envparity-baseline.json        # ...and fail only on new ones
+```
 
 In GitHub Actions, `--format github` turns findings into inline annotations:
 
@@ -61,7 +69,7 @@ What it understands: `.env.example`/`.env.sample`/`.env.template`/`.env.dist`; c
 `${VAR}`, `${VAR:-d}`, `${VAR:?e}` and `$$`; workflows' `env:` at every level plus `env.`, `vars.` and `secrets.` contexts;
 Pod/Deployment/StatefulSet/DaemonSet/Job/CronJob `env`, `envFrom`, `valueFrom`, init containers, ConfigMap/Secret objects and
 Kustomize generators; env reads in JS/TS, Python, Go, Ruby, Rust, PHP, Java, C#.
-Helm templates (`{{ }}`) are skipped with a note: render them with `helm template` and scan the output.
+Helm templates are read best-effort (directive lines dropped, `{{ }}` replaced, values unknown); for exact results render with `helm template` and scan the output. Charts that build `env` with `include`/`toYaml` make Kubernetes gap checks stand down.
 Secrets that are not in the repo are reported as a note, never as an error.
 
 ## Configuration

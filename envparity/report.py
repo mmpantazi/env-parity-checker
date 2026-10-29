@@ -18,7 +18,10 @@ def summary(findings: list[Finding]) -> dict[str, int]:
 def text(project: Project, findings: list[Finding], colour: bool = False, hidden: int = 0) -> str:
     lines = []
     seen = ", ".join(f"{LAYER_LABEL[l]} ({len(project.files[l])})" for l in LAYERS if project.files.get(l))
-    lines.append(f"Checked: {seen or 'nothing found'}")
+    if not seen:
+        return (f"Nothing to check under {project.root}: no .env.example, docker-compose, GitHub workflow or Kubernetes "
+                "manifest found. Pass the project root as the first argument.")
+    lines.append(f"Checked: {seen}")
     if project.helm:
         lines.append(f"Read {len(project.helm)} Helm template(s) on a best-effort basis (values are not rendered); "
                      "for exact results run `helm template` into a folder and scan that.")

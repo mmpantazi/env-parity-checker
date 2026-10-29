@@ -69,3 +69,8 @@ def test_suggest_lists_undocumented_variables(capsys):
 
 def test_unreadable_baseline_is_usage_error(tmp_path, capsys):
     assert main([str(EXAMPLE), "--baseline", str(tmp_path / "missing.json")]) == 2
+
+
+def test_empty_directory_is_not_a_silent_pass(tmp_path, capsys):
+    assert main([str(tmp_path)]) == 0
+    assert "Nothing to check" in capsys.readouterr().out
