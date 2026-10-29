@@ -185,3 +185,16 @@ def test_ci_env_names_may_contain_hyphens_and_ignore_case(project):
 def test_mention_in_config_file_counts_as_use(project):
     files = {".env.example": "PASSED_THROUGH=1\nDEAD_ONE=1\n", "turbo.json": '{"env": ["PASSED_THROUGH"]}', "app.py": "pass\n"}
     assert [n for _, n in rules(project(files), "unused")] == ["DEAD_ONE"]
+
+
+def test_bom_and_crlf_in_template(project):
+    root = project.root
+    root.mkdir(exist_ok=True)
+    (root / ".env.example").write_bytes(b"\xef\xbb\xbfPORT=1\r\nHOST=a\r\n")
+    (root / "docker-compose.yml").write_bytes(b"services:\r\n  a:\r\n    image: x\r\n    environment:\r\n      - PORT=${PORT}\r\n")
+    assert not rules(project({}), "missing")
+
+
+def test_missing_replaces_undeclared_for_same_variable(project):
+    f = project({**TEMPLATE, "docker-compose.yml": "services:\n  a:\n    image: x\n    environment:\n      NEW: ${NEW}\n"})
+    assert ("missing", "NEW") in rules(f) and ("undeclared", "NEW") not in rules(f)

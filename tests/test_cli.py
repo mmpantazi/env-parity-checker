@@ -40,15 +40,32 @@ def test_clean_project_exits_zero(tmp_path, capsys):
 def test_bad_path_and_bad_config(tmp_path, capsys):
     assert main([str(tmp_path / "nope")]) == 2
     (tmp_path / ".envparity.toml").write_text('[rules]\nmissing = "loud"\n')
-    try:
-        main([str(tmp_path)])
-        raised = False
-    except SystemExit as exc:
-        raised = "level must be" in str(exc)
-    assert raised
+    assert main([str(tmp_path)]) == 2
+    assert "level must be" in capsys.readouterr().err
+    (tmp_path / ".envparity.toml").write_text('[rules]\nmisssing = "off"\n')
+    assert main([str(tmp_path)]) == 2
+    assert "unknown rule 'misssing'" in capsys.readouterr().err
 
 
 def test_matrix(tmp_path, capsys):
     (tmp_path / ".env.example").write_text("PORT=3000\n")
     main([str(tmp_path), "--matrix"])
     assert "VARIABLE" in capsys.readouterr().out
+
+
+def test_baseline_roundtrip(tmp_path, capsys):
+    base = tmp_path / "base.json"
+    assert main([str(EXAMPLE), "--write-baseline", str(base)]) == 0
+    assert main([str(EXAMPLE), "--baseline", str(base)]) == 0
+    assert "hidden by the baseline" in capsys.readouterr().out
+
+
+def test_suggest_lists_undocumented_variables(capsys):
+    main([str(EXAMPLE), "--suggest"])
+    lines = capsys.readouterr().out.splitlines()
+    assert "STRIPE_KEY=" in lines and "SENTRY_DSN=" in lines
+    assert not any(l.startswith("JWT_SECRET") for l in lines)
+
+
+def test_unreadable_baseline_is_usage_error(tmp_path, capsys):
+    assert main([str(EXAMPLE), "--baseline", str(tmp_path / "missing.json")]) == 2

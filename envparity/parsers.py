@@ -6,7 +6,7 @@ from pathlib import PurePosixPath
 import yaml
 
 from . import yamlx
-from .model import NAME_RE, Finding, KubeObject, Project, Ref
+from .model import HELM_TOKEN, NAME_RE, Finding, KubeObject, Project, Ref
 
 POD_KINDS = {"Pod", "Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob", "ReplicaSet", "ReplicationController"}
 DOTENV_LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*(?:=\s*(.*?))?\s*$")
@@ -187,13 +187,42 @@ def _first_line(exc: Exception) -> str:
     return str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
 
 
-def parse_kube(project: Project, rel: str, text: str, read_sibling) -> None:
-    project.add_file("k8s", rel)
+HELM_DIRECTIVE = re.compile(r"^\s*\{\{-?.*-?\}\}\s*$")
+HELM_OPAQUE = re.compile(r"\b(include|toYaml|range|tpl)\b")
+
+
+def _helm_to_yaml(text: str) -> tuple[str, bool]:
+    """Best effort: blank out whole-line directives and replace inline {{ }} with a token."""
+    lines, opaque = [], False
+    for line in text.splitlines():
+        if HELM_DIRECTIVE.match(line):
+            opaque = opaque or bool(HELM_OPAQUE.search(line))
+            lines.append("")
+        else:
+            lines.append(re.sub(r"\{\{.*?\}\}", HELM_TOKEN, line))
+    return "\n".join(lines), opaque
+
+
+def parse_kube(project: Project, rel: str, text: str, read_sibling, helm: bool = False) -> bool:
+    if helm:
+        text, opaque = _helm_to_yaml(text)
+        project.k8s_opaque = project.k8s_opaque or opaque
     try:
         docs = yamlx.load_all(text)
     except yaml.YAMLError as exc:
-        project.findings.append(Finding("parse-error", "warn", "", f"{rel}: invalid YAML ({_first_line(exc)})", [rel]))
-        return
+        if not helm:
+            project.add_file("k8s", rel)
+            project.findings.append(Finding("parse-error", "warn", "", f"{rel}: invalid YAML ({_first_line(exc)})", [rel]))
+        return False
+    project.add_file("k8s", rel)
+    before = len(project.findings)
+    _parse_kube_docs(project, rel, docs, read_sibling)
+    if helm:
+        project.findings[before:] = [f for f in project.findings[before:] if f.rule != "duplicate"]
+    return True
+
+
+def _parse_kube_docs(project: Project, rel: str, docs: list, read_sibling) -> None:
     for doc in docs:
         if not isinstance(doc, dict):
             continue
@@ -224,6 +253,8 @@ def _pod_spec(doc: dict, kind: str) -> dict:
 
 
 def _register_object(project: Project, rel: str, doc: dict, kind: str, name: str) -> None:
+    if HELM_TOKEN in name:
+        return
     obj = project.objects.setdefault((kind, name), KubeObject(kind, name, rel))
     for section in ("data", "stringData", "binaryData"):
         data = doc.get(section)
@@ -272,6 +303,8 @@ def _container(project: Project, rel: str, kind: str, workload: str, container: 
         if not isinstance(item, dict) or "name" not in item:
             continue
         name = str(item["name"])
+        if HELM_TOKEN in name:
+            continue
         line = yamlx.line_of(env, index)
         if name in seen:
             project.findings.append(Finding(
@@ -294,7 +327,8 @@ def _container(project: Project, rel: str, kind: str, workload: str, container: 
                         f"{scope}: {name} uses $({ref}) but {ref} is not defined earlier in env, so it stays the literal text "
                         f"'$({ref})' and the pod starts anyway",
                         [f"{rel}:{line}"], f"Define {ref} before {name}, or escape with $$({ref})."))
-            project.refs.append(Ref(name, "k8s", "define", rel, line, "literal", text, scope))
+            templated = HELM_TOKEN in text
+            project.refs.append(Ref(name, "k8s", "define", rel, line, "ref" if templated else "literal", None if templated else text, scope))
         elif isinstance(item.get("valueFrom"), dict):
             _value_from(project, rel, name, item["valueFrom"], scope, line)
         defined_so_far.add(name)
@@ -304,7 +338,9 @@ def _container(project: Project, rel: str, kind: str, workload: str, container: 
         prefix = str(entry.get("prefix", ""))
         for ref_key, kind_name in (("configMapRef", "ConfigMap"), ("secretRef", "Secret")):
             ref = entry.get(ref_key)
-            if isinstance(ref, dict) and "name" in ref:
+            if isinstance(ref, dict) and "name" in ref and HELM_TOKEN in str(ref["name"]):
+                project.k8s_opaque = True
+            elif isinstance(ref, dict) and "name" in ref:
                 project.refs.append(Ref(prefix, "k8s", "define", rel, yamlx.line_of(container, "envFrom"), "envfrom",
                                         scope=scope, extra={"object": (kind_name, str(ref["name"])), "prefix": prefix,
                                                             "optional": bool(ref.get("optional"))}))
@@ -313,6 +349,9 @@ def _container(project: Project, rel: str, kind: str, workload: str, container: 
 def _value_from(project: Project, rel: str, name: str, source: dict, scope: str, line: int) -> None:
     for key, kind_name, kind in (("configMapKeyRef", "ConfigMap", "configmap"), ("secretKeyRef", "Secret", "secret")):
         ref = source.get(key)
+        if isinstance(ref, dict) and HELM_TOKEN in str(ref.get("name", "")) + str(ref.get("key", "")):
+            project.refs.append(Ref(name, "k8s", "define", rel, line, "field", None, scope))
+            return
         if isinstance(ref, dict):
             project.refs.append(Ref(name, "k8s", "define", rel, line, kind, None, scope,
                                     extra={"object": (kind_name, str(ref.get("name", ""))), "key": str(ref.get("key", "")),

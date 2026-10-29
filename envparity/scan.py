@@ -35,7 +35,7 @@ DESTRUCTURE = re.compile(r"\{([^}]*)\}\s*=\s*process\.env")
 
 def _read(path: Path) -> str | None:
     try:
-        return path.read_bytes().decode("utf-8", errors="replace")
+        return path.read_bytes().decode("utf-8-sig", errors="replace")
     except OSError:
         return None
 
@@ -88,7 +88,10 @@ def scan_project(root: Path, exclude: list[str] | None = None, code: bool = True
                 parsers.parse_workflow(project, rel, text)
             elif re.search(r"^apiVersion:", text, re.M) and re.search(r"^kind:", text, re.M):
                 if "{{" in text:
-                    project.skipped.append(rel)
+                    if parsers.parse_kube(project, rel, text, read_sibling, helm=True):
+                        project.helm.append(rel)
+                    else:
+                        project.skipped.append(rel)
                 else:
                     parsers.parse_kube(project, rel, text, read_sibling)
         elif code and suffix in CODE_EXT:

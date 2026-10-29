@@ -33,7 +33,7 @@ def run(project: Project, config: Config, code_scanned: bool) -> list[Finding]:
     return _apply_rules(_drop_overlaps(findings), config)
 
 
-SUPERSEDES = (("bad-type", "type-mismatch"), ("bad-type", "inconsistent"), ("type-mismatch", "inconsistent"),
+SUPERSEDES = (("missing", "undeclared"), ("bad-type", "type-mismatch"), ("bad-type", "inconsistent"), ("type-mismatch", "inconsistent"),
               ("bool-spelling", "inconsistent"), ("possible-typo", "undeclared"), ("possible-typo", "layer-gap"))
 
 
@@ -59,7 +59,7 @@ class _Context:
 
 
 def _expand_k8s(project: Project, findings: list[Finding]) -> bool:
-    opaque = False
+    opaque = project.k8s_opaque
     expanded: list[Ref] = []
     reported: set[tuple[str, str]] = set()
     for ref in project.refs:

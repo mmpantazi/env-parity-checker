@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 LAYERS = ("template", "compose", "ci", "k8s", "code")
+RULES = ("missing", "undeclared", "code-undeclared", "unused", "layer-gap", "template-gap", "inconsistent", "type-mismatch",
+         "bad-type", "bool-spelling", "possible-typo", "secret-in-plain", "duplicate", "k8s-unquoted", "k8s-missing-key",
+         "k8s-forward-ref", "external-ref", "env-file-missing", "no-template", "parse-error")
+HELM_TOKEN = "__helm__"
 SEVERITIES = ("error", "warn", "info")
 
 
@@ -65,6 +69,8 @@ class Project:
     files: dict[str, list[str]] = field(default_factory=dict)
     skipped: list[str] = field(default_factory=list)
     mentions: set[str] = field(default_factory=set)
+    helm: list[str] = field(default_factory=list)
+    k8s_opaque: bool = False
 
     def add_file(self, layer: str, path: str) -> None:
         self.files.setdefault(layer, []).append(path)

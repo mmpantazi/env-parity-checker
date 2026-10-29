@@ -15,13 +15,16 @@ def summary(findings: list[Finding]) -> dict[str, int]:
     return {s: counts.get(s, 0) for s in ("error", "warn", "info")}
 
 
-def text(project: Project, findings: list[Finding], colour: bool = False) -> str:
+def text(project: Project, findings: list[Finding], colour: bool = False, hidden: int = 0) -> str:
     lines = []
     seen = ", ".join(f"{LAYER_LABEL[l]} ({len(project.files[l])})" for l in LAYERS if project.files.get(l))
     lines.append(f"Checked: {seen or 'nothing found'}")
+    if project.helm:
+        lines.append(f"Read {len(project.helm)} Helm template(s) on a best-effort basis (values are not rendered); "
+                     "for exact results run `helm template` into a folder and scan that.")
     if project.skipped:
-        lines.append(f"Skipped {len(project.skipped)} templated (Helm) file(s): {', '.join(project.skipped[:3])}"
-                     + (" ..." if len(project.skipped) > 3 else "") + "; render them with `helm template` into a folder and scan that.")
+        lines.append(f"Skipped {len(project.skipped)} templated file(s) that are not valid YAML even after removing Helm "
+                     f"directives: {', '.join(project.skipped[:3])}" + (" ..." if len(project.skipped) > 3 else ""))
     lines.append("")
     for f in findings:
         tag = f"{f.severity.upper():5}"
@@ -34,7 +37,8 @@ def text(project: Project, findings: list[Finding], colour: bool = False) -> str
             lines.append(f"      fix: {f.hint}")
     counts = summary(findings)
     lines.append("")
-    lines.append(f"{counts['error']} error(s), {counts['warn']} warning(s), {counts['info']} note(s)")
+    lines.append(f"{counts['error']} error(s), {counts['warn']} warning(s), {counts['info']} note(s)"
+                 + (f" ({hidden} known issue(s) hidden by the baseline)" if hidden else ""))
     return "\n".join(lines)
 
 
@@ -71,4 +75,23 @@ def github(findings: list[Finding]) -> str:
         message = f"{f.rule}: {f.message}".replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
         props = f"file={file},line={line}," if file else ""
         out.append(f"::{level} {props}title=envparity {f.rule}::{message}")
+    return "\n".join(out)
+
+
+SUGGEST_RULES = {"missing", "undeclared", "code-undeclared"}
+
+
+def suggest(project: Project, findings: list[Finding]) -> str:
+    """Lines to append to .env.example for variables that are used but undocumented."""
+    from .checks import SECRET_NAME
+
+    names = sorted({f.name for f in findings if f.rule in SUGGEST_RULES and f.name})
+    literal = {}
+    for ref in project.refs:
+        if ref.role == "define" and ref.kind == "literal" and ref.value and ref.name not in literal:
+            literal[ref.name] = ref.value
+    out = []
+    for name in names:
+        value = "" if SECRET_NAME.search(name) else literal.get(name, "")
+        out.append(f"{name}={value}")
     return "\n".join(out)

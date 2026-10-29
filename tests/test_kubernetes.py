@@ -75,3 +75,48 @@ def test_helm_templates_are_skipped_with_note(project):
     tpl = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ .Release.Name }}\n"
     f = project({".env.example": "A=1\n", "chart/templates/cm.yaml": tpl})
     assert f == [] or not rules(f, "parse-error")
+
+
+HELM = """\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "x.fullname" . }}
+spec:
+  template:
+    spec:
+      containers:
+        - name: web
+          env:
+            {{- if .Values.debug }}
+            - name: DEBUG
+              value: "true"
+            {{- else }}
+            - name: DEBUG
+              value: "false"
+            {{- end }}
+            - name: PORT
+              value: {{ .Values.port | quote }}
+            - name: RETRIES
+              value: 3
+            - name: DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-db
+                  key: url
+"""
+
+
+def test_helm_template_best_effort(project):
+    f = project({".env.example": "DEBUG=true\nPORT=1\nRETRIES=3\nDB=x\n", "chart/templates/d.yaml": HELM})
+    got = rules(f)
+    assert ("k8s-unquoted", "RETRIES") in got
+    assert not rules(f, "duplicate") and not rules(f, "external-ref")
+    assert not [x for x in f if x.rule == "inconsistent"]
+
+
+def test_helm_with_include_blocks_makes_k8s_opaque(project):
+    tpl = HELM.replace("{{- if .Values.debug }}", "{{- include \"x.env\" . | nindent 12 }}")
+    f = project({".env.example": "ONLY_IN_TEMPLATE=1\n", "docker-compose.yml": "services:\n  a:\n    image: x\n    environment:\n      ONLY_IN_TEMPLATE: '1'\n",
+                 "chart/templates/d.yaml": tpl})
+    assert not rules(f, "layer-gap")
