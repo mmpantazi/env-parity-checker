@@ -74,3 +74,12 @@ def test_unreadable_baseline_is_usage_error(tmp_path, capsys):
 def test_empty_directory_is_not_a_silent_pass(tmp_path, capsys):
     assert main([str(tmp_path)]) == 0
     assert "Nothing to check" in capsys.readouterr().out
+
+
+def test_repeated_rules_drop_fix_hints_after_a_few(tmp_path, capsys):
+    (tmp_path / ".env.example").write_text("A=1\n")
+    env = "".join(f"      V{i}: 'x'\n" for i in range(12))
+    (tmp_path / "docker-compose.yml").write_text("services:\n  a:\n    image: x\n    environment:\n" + env)
+    main([str(tmp_path), "--no-code"])
+    out = capsys.readouterr().out
+    assert out.count("fix:") == 5 and "fix hints omitted" in out

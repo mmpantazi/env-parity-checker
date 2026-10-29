@@ -8,6 +8,7 @@ from .model import LAYERS, Finding, Project
 
 COLOUR = {"error": "\033[31m", "warn": "\033[33m", "info": "\033[36m"}
 RESET = "\033[0m"
+COMPACT_AFTER = 5
 
 
 def summary(findings: list[Finding]) -> dict[str, int]:
@@ -29,17 +30,24 @@ def text(project: Project, findings: list[Finding], colour: bool = False, hidden
         lines.append(f"Skipped {len(project.skipped)} templated file(s) that are not valid YAML even after removing Helm "
                      f"directives: {', '.join(project.skipped[:3])}" + (" ..." if len(project.skipped) > 3 else ""))
     lines.append("")
+    printed: Counter = Counter()
     for f in findings:
         tag = f"{f.severity.upper():5}"
         if colour:
             tag = f"{COLOUR[f.severity]}{tag}{RESET}"
+        printed[f.rule] += 1
         lines.append(f"{tag} {f.rule:<14} {f.message}")
         if f.locations:
             lines.append(f"      at {', '.join(f.locations)}")
-        if f.hint:
+        if f.hint and printed[f.rule] <= COMPACT_AFTER:
             lines.append(f"      fix: {f.hint}")
+        elif f.hint and printed[f.rule] == COMPACT_AFTER + 1:
+            lines.append("      (fix hints omitted for the rest of this rule)")
     counts = summary(findings)
     lines.append("")
+    by_rule = Counter(f.rule for f in findings)
+    if len(by_rule) > 1:
+        lines.append("By rule: " + ", ".join(f"{rule} {n}" for rule, n in by_rule.most_common()))
     lines.append(f"{counts['error']} error(s), {counts['warn']} warning(s), {counts['info']} note(s)"
                  + (f" ({hidden} known issue(s) hidden by the baseline)" if hidden else ""))
     return "\n".join(lines)

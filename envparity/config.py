@@ -9,7 +9,8 @@ from .model import RULES
 
 BUILTIN_PROVIDED = [
     "PATH", "HOME", "USER", "PWD", "HOSTNAME", "SHELL", "TERM", "LANG", "TZ", "CI", "COMPOSE_*", "DOCKER_*", "GITHUB_*",
-    "RUNNER_*", "KUBERNETES_*", "NODE_ENV",
+    "RUNNER_*", "KUBERNETES_*", "NODE_ENV", "LD_*", "CARGO_*", "XDG_*", "TMPDIR", "TMP", "TEMP", "LOGNAME", "EDITOR",
+    "DISPLAY", "NO_COLOR", "FORCE_COLOR", "SHLVL", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
 ]
 
 

@@ -120,3 +120,8 @@ def test_helm_with_include_blocks_makes_k8s_opaque(project):
     f = project({".env.example": "ONLY_IN_TEMPLATE=1\n", "docker-compose.yml": "services:\n  a:\n    image: x\n    environment:\n      ONLY_IN_TEMPLATE: '1'\n",
                  "chart/templates/d.yaml": tpl})
     assert not rules(f, "layer-gap")
+
+
+def test_kind_list_items_are_read(project):
+    k8s = "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: apps/v1\n    kind: Deployment\n    metadata: {name: a}\n    spec:\n      template:\n        spec:\n          containers:\n            - name: a\n              env: [{name: PORT, value: 8080}]\n"
+    assert ("k8s-unquoted", "PORT") in rules(project({"l.yaml": k8s}))

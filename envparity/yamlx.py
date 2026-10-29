@@ -41,6 +41,16 @@ def _sequence(loader: _Loader, node: yaml.SequenceNode) -> LList:
     return result
 
 
+def _untagged(loader: _Loader, suffix: str, node: yaml.Node):
+    """Compose `!reset`/`!override` and similar custom tags: read the value, ignore the tag."""
+    if isinstance(node, yaml.MappingNode):
+        return _mapping(loader, node)
+    if isinstance(node, yaml.SequenceNode):
+        return _sequence(loader, node)
+    return loader.construct_scalar(node)
+
+
+_Loader.add_multi_constructor("!", _untagged)
 _Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping)
 _Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_SEQUENCE_TAG, _sequence)
 

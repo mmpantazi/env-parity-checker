@@ -39,10 +39,10 @@ envparity --write-baseline .envparity-baseline.json  # accept today's findings..
 envparity --baseline .envparity-baseline.json        # ...and fail only on new ones
 ```
 
-In GitHub Actions, `--format github` turns findings into inline annotations:
+envparity is not on PyPI yet; install it from a checkout. In GitHub Actions, `--format github` turns findings into inline annotations:
 
 ```yaml
-- run: pip install envparity && envparity --format github
+- run: pip install ./tools/envparity && envparity --format github   # path to a checkout or vendored copy
 ```
 
 ## What it checks
@@ -61,6 +61,7 @@ In GitHub Actions, `--format github` turns findings into inline annotations:
 | `type-mismatch`, `bad-type` | warn | `*_PORT` not a port, `*_URL` without scheme, flags that are not booleans, number vs string across layers |
 | `possible-typo` | warn | `DATABSE_URL` next to `DATABASE_URL` in a different layer |
 | `secret-in-plain` | warn | `*_PASSWORD`/`*_TOKEN`/... with a literal value in k8s or CI |
+| `committed-env` | warn | a `.env` tracked by git (it is then read as the template) |
 | `duplicate`, `bool-spelling`, `template-gap`, `external-ref`, `env-file-missing`, `no-template` | info/warn | smaller notes |
 
 Only one finding is shown per variable when rules overlap (`bad-type` beats `type-mismatch` beats `inconsistent`).
@@ -71,6 +72,18 @@ Pod/Deployment/StatefulSet/DaemonSet/Job/CronJob `env`, `envFrom`, `valueFrom`, 
 Kustomize generators; env reads in JS/TS, Python, Go, Ruby, Rust, PHP, Java, C#.
 Helm templates are read best-effort (directive lines dropped, `{{ }}` replaced, values unknown); for exact results render with `helm template` and scan the output. Charts that build `env` with `include`/`toYaml` make Kubernetes gap checks stand down.
 Secrets that are not in the repo are reported as a note, never as an error.
+
+Pre-commit (local hook):
+
+```yaml
+- repo: local
+  hooks:
+    - id: envparity
+      name: envparity
+      entry: envparity --fail-on error
+      language: system
+      pass_filenames: false
+```
 
 ## Configuration
 

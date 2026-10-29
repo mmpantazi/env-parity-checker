@@ -17,7 +17,11 @@ KUBE_REF = re.compile(r"(?<!\$)\$\(([A-Za-z_][A-Za-z0-9_.-]*)\)")
 
 def parse_dotenv_text(text: str) -> list[tuple[str, str | None, int]]:
     out = []
-    for number, raw in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        raw, number = lines[index], index + 1
+        index += 1
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
         match = DOTENV_LINE.match(raw)
@@ -25,6 +29,10 @@ def parse_dotenv_text(text: str) -> list[tuple[str, str | None, int]]:
             continue
         value = match.group(2)
         if value is not None:
+            quote = value[:1]
+            while quote in ("'", '"') and value.find(quote, 1) < 0 and index < len(lines):
+                value += "\n" + lines[index]
+                index += 1
             value = _unquote(value)
         out.append((match.group(1), value, number))
     return out
@@ -223,7 +231,13 @@ def parse_kube(project: Project, rel: str, text: str, read_sibling, helm: bool =
 
 
 def _parse_kube_docs(project: Project, rel: str, docs: list, read_sibling) -> None:
+    flat = []
     for doc in docs:
+        if isinstance(doc, dict) and doc.get("kind") == "List" and isinstance(doc.get("items"), list):
+            flat.extend(doc["items"])
+        else:
+            flat.append(doc)
+    for doc in flat:
         if not isinstance(doc, dict):
             continue
         kind = doc.get("kind")

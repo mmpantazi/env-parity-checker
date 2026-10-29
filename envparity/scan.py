@@ -3,6 +3,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+import subprocess
 from pathlib import Path
 
 from . import parsers
@@ -58,9 +59,20 @@ def _rel(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
+def _tracked_files(root: Path) -> set[str]:
+    if not (root / ".git").exists():
+        return set()
+    try:
+        out = subprocess.run(["git", "-C", str(root), "ls-files", "-z"], capture_output=True, timeout=30, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {p.decode("utf-8", "replace") for p in out.split(b"\0") if p}
+
+
 def scan_project(root: Path, exclude: list[str] | None = None, code: bool = True) -> Project:
     exclude = exclude or []
     project = Project(root=str(root))
+    tracked = _tracked_files(root)
 
     def read_sibling(rel: str, target: str) -> str | None:
         base = (root / rel).parent
@@ -74,7 +86,14 @@ def scan_project(root: Path, exclude: list[str] | None = None, code: bool = True
     for path, rel in walk(root, exclude):
         name = path.name
         suffix = path.suffix.lower()
-        if TEMPLATE_RE.match(name):
+        if name == ".env" and rel in tracked:
+            text = _read(path)
+            if text is not None:
+                parsers.parse_template(project, rel, text)
+                project.findings.append(Finding(
+                    "committed-env", "warn", "", f"{rel} is committed to git; it is treated as the template, but real values "
+                    "in a tracked .env end up in history", [rel], "Commit .env.example with placeholders and add .env to .gitignore."))
+        elif TEMPLATE_RE.match(name):
             text = _read(path)
             if text is not None:
                 parsers.parse_template(project, rel, text)

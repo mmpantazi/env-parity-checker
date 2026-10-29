@@ -6,7 +6,7 @@ from typing import Any
 
 LAYERS = ("template", "compose", "ci", "k8s", "code")
 RULES = ("missing", "undeclared", "code-undeclared", "unused", "layer-gap", "template-gap", "inconsistent", "type-mismatch",
-         "bad-type", "bool-spelling", "possible-typo", "secret-in-plain", "duplicate", "k8s-unquoted", "k8s-missing-key",
+         "bad-type", "bool-spelling", "possible-typo", "secret-in-plain", "duplicate", "committed-env", "k8s-unquoted", "k8s-missing-key",
          "k8s-forward-ref", "external-ref", "env-file-missing", "no-template", "parse-error")
 HELM_TOKEN = "__helm__"
 SEVERITIES = ("error", "warn", "info")

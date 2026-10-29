@@ -121,7 +121,8 @@ def _missing(ctx: _Context):
             else:
                 msg = f"${{{{ env.{name} }}}} is read but no env: block in this workflow sets it"
                 hint = f"Set {name} under env: at workflow, job or step level."
-            yield Finding("missing", "error", name, msg, [ref.where], hint)
+            passthrough = ref.scope == "passthrough"
+            yield Finding("missing", "warn" if passthrough else "error", name, msg, [ref.where], hint)
             break
 
 
@@ -194,7 +195,9 @@ def _layer_gaps(ctx: _Context):
 def _literal(ref: Ref) -> str | None:
     if ref.role != "define" or ref.value is None or ref.kind not in ("literal", "configmap"):
         return None
-    return None if is_placeholder(ref.value, ref.name) else ref.value.strip()
+    if is_placeholder(ref.value, ref.name) or any(token in ref.value for token in ("${", "$(", "{{")):
+        return None
+    return ref.value.strip()
 
 
 def _normalise(value: str) -> tuple:
@@ -296,7 +299,7 @@ def _name_problem(name: str, value: str) -> str | None:
         if value.lower() not in BOOL_WORDS:
             return "a flag should be true/false (or 1/0)"
     elif NUM_NAME.search(name):
-        if not re.fullmatch(r"\d+(\.\d+)?\s*(ms|s|m|h|d|k|kb|mb|gb|m|g)?", value, re.I):
+        if not re.fullmatch(r"(\d+(\.\d+)?\s*(ns|us|ms|s|m|h|d|w|k|kb|mb|gb|g|b))+|\d+(\.\d+)?", value, re.I):
             return "expected a number (optionally with a unit)"
     return None
 

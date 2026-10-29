@@ -198,3 +198,62 @@ def test_bom_and_crlf_in_template(project):
 def test_missing_replaces_undeclared_for_same_variable(project):
     f = project({**TEMPLATE, "docker-compose.yml": "services:\n  a:\n    image: x\n    environment:\n      NEW: ${NEW}\n"})
     assert ("missing", "NEW") in rules(f) and ("undeclared", "NEW") not in rules(f)
+
+
+def test_multiline_quoted_value_does_not_leak_keys(project):
+    f = project({".env.example": 'KEY="-----BEGIN\nINNER=oops\n-----END"\nLAST=1\n', "docker-compose.yml": "services:\n  a:\n    image: x\n    environment:\n      LAST: '1'\n      KEY: x\n"})
+    assert ("undeclared", "INNER") not in rules(f)
+    assert not rules(f, "undeclared")
+
+
+def test_embedded_interpolation_is_not_compared_as_literal(project):
+    files = {".env.example": "HOST=db\nNAME=app_${HOST}\n", "docker-compose.yml": "services:\n  a:\n    image: x\n    environment:\n      NAME: app_db\n      HOST: db\n"}
+    assert not rules(project(files), "inconsistent")
+
+
+def test_yaml_anchors_and_null_values_in_compose(project):
+    compose = "x-env: &env\n  A_ONE: '1'\nservices:\n  a:\n    image: x\n    environment:\n      <<: *env\n      B_TWO:\n"
+    got = rules(project({".env.example": "A_ONE=1\n", "docker-compose.yml": compose}))
+    assert ("undeclared", "B_TWO") not in got or ("missing", "B_TWO") in got
+    assert ("missing", "B_TWO") in got and ("undeclared", "A_ONE") not in got
+
+
+def test_tracked_env_counts_as_template_and_is_flagged(project):
+    import subprocess
+    root = project.root
+    (root / ".env").write_text("DB_HOST=x\n")
+    (root / "docker-compose.yml").write_text("services:\n  a:\n    image: ${DB_HOST}\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", ".env"], cwd=root, check=True)
+    got = rules(project({}))
+    assert ("committed-env", "") in got and ("missing", "DB_HOST") not in got
+
+
+def test_untracked_env_is_ignored(project):
+    import subprocess
+    root = project.root
+    (root / ".env").write_text("DB_HOST=x\n")
+    (root / "docker-compose.yml").write_text("services:\n  a:\n    image: ${DB_HOST}\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    got = rules(project({}))
+    assert ("missing", "DB_HOST") in got and not rules(project({}), "committed-env")
+
+
+def test_compose_custom_tags_do_not_break_parsing(project):
+    compose = "services:\n  a:\n    image: x\n    ports: !reset []\n    environment: !override\n      NEW_VAR: '1'\n"
+    f = project({".env.example": "A=1\n", "docker-compose.yml": compose})
+    assert not rules(f, "parse-error") and ("undeclared", "NEW_VAR") in rules(f)
+
+
+def test_compound_durations_are_valid_numbers(project):
+    assert not rules(project({".env.example": "HEALTHCHECK_TIMEOUT=1m30s\nCACHE_TTL=500ms\nX_LIMIT=10mb\n"}), "bad-type")
+
+
+def test_passthrough_without_template_entry_is_only_a_warning(project):
+    f = project({**TEMPLATE, "docker-compose.yml": "services:\n  a:\n    image: x\n    environment:\n      - OPTIONAL_HOST\n      - X=${NEEDED}\n"})
+    sev = {x.name: x.severity for x in f if x.rule == "missing"}
+    assert sev == {"OPTIONAL_HOST": "warn", "NEEDED": "error"}
+
+
+def test_system_variables_are_not_reported(project):
+    assert not rules(project({**TEMPLATE, "x.py": "os.environ['LD_LIBRARY_PATH']\nos.getenv('HTTP_PROXY')\n"}), "code-undeclared")
